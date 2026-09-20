@@ -1,0 +1,16 @@
+=== Lab 01 workstation provisioning evidence ===
+Sat Sep 19 16:24:07 CEST 2026
+hannashymanovych
+Darwin
+=== First capability check ===
+git version 2.35.1
+gh version 2.101.0 (2026-09-15)
+https://github.com/cli/cli/releases/tag/v2.101.0
+uv 0.12.16 (Homebrew 2026-09-17 aarch64-apple-darwin)
+Obsidian: installed
+=== Second capability check ===
+git version 2.35.1
+gh version 2.101.0 (2026-09-15)
+https://github.com/cli/cli/releases/tag/v2.101.0
+uv 0.12.16 (Homebrew 2026-09-17 aarch64-apple-darwin)
+Obsidian: installed

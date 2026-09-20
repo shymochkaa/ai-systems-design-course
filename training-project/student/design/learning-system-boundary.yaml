@@ -1,0 +1,35 @@
+schema_version: "1.0"
+proposal_id: lab01-boundary-machine-learning
+status: approved
+personal_domain: Machine Learning
+intended_learning_outcome: Trace technical concepts to preserved source evidence, relate them to accepted
+  concepts, expose missing prerequisites, and answer learning questions grounded in retained sources.
+non_goals:
+  - Autonomously mutating canonical vault knowledge or accepting concept interpretations without explicit
+    human approval.
+  - Training a foundation model from scratch or making high-consequence medical, financial, legal, or
+    safety-critical decisions.
+governance:
+  ai_role: Propose a bounded system description and expose uncertainty without accepting changes.
+  deterministic_role: Validate the candidate, bind the decision to its digest, and apply only approved
+    content.
+  human_role: Review meaning and explicitly approve or reject the proposal before application.
+usefulness_condition: The system enables a student to inspect concept provenance, discover missing prerequisites,
+  and receive factual answers grounded in retained source evidence.
+material_risk: The AI assistant generates plausible but unsupported concept interpretations or relations
+  (silent semantic failure) that the student accepts without rigorous verification.
+non_ai_baseline: Manually reading course Markdown sources and taking notes using keyword search and standard
+  document cross-references.
+uncertainty: Whether the supplied course relation vocabulary and prompt templates will be sufficient to
+  capture technical concepts without excessive manual corrections.
+required_evidence:
+  - A passing deterministic schema validation confirming required fields and invariants without modifying
+    canonical state.
+  - A recorded student decision bound to the proposal SHA-256 digest verifying semantic accuracy against
+    the registered source.
+accepted:
+  source_proposal: boundary-proposal.yaml
+  proposal_sha256: 8b655d8ac6e55c619b29d19fdd400d32ee6ccd26b02f7ee90daaf9ed6d98c598
+  approved_by: shymanovych-kn1223b
+  approved_at: "2026-09-20T18:59:02.218805+00:00"
+  applied_at: "2026-09-20T19:00:05.092930+00:00"
