@@ -4,7 +4,7 @@
 
 - URL форку: https://github.com/shymochkaa/ai-systems-design-course
 - Назва гілки: `lab01/shymanovych-kn1223b`
-- Повний хеш коміту: буде додано після фінального коміту
+- Повний хеш коміту: `27249e8267ab9cc9a45b6b19f6b5b0cbddf95713`
 
 ## Середовище
 
