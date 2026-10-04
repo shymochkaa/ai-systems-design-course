@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "lab_id": "lab02",
   "status": "passed",
-  "generated_at": "2026-10-04T10:52:01.741295+00:00",
+  "generated_at": "2026-10-04T11:06:17.050517+00:00",
   "course_commit": "9f726af26394c43c0ded41ab32b3ebfd392e65cb",
   "live_runs": [
     "live-primary-01",
@@ -17,8 +17,7 @@
   },
   "artifacts": {
     "vault/sources/module-02-foundation-models-and-ai-application-architecture.md": "304a4f66e4fa71dd81a755f52ad1d344e8151ed571b0663155c3b11411545ec4",
-    "report/.DS_Store": "097435000304c2c76249b6199b9eb41a34cfa0952f660d07f979e908627321b6",
-    "report/REPORT.md": "a7c1927b58d7c72609e3957341d3e46fe8660fd0e9a8f208df1db7493468be36",
+    "report/REPORT.md": "2a0191aa8fddc9f626125d5fb6a9a770fc66e4b490ccf34dfe665044c72a59d8",
     "report/live-comparison.json": "5762a147d1f8e83b5431f178f86db82e2224468f9e4e12b31b8436fd929b933a",
     "report/revisions/human-01/validation-result.json": "1252ea6cad5822bf156cdea9f84c97673aae4dd7ae6ba051867da45c502918a6",
     "report/revisions/human-01.yaml": "0679b2dc67c5779234f3293b7c8cd8af26a4bad516faf0524226b06638b5ba7f",
@@ -30,7 +29,6 @@
     "report/runs/live-primary-02/raw-response.txt": "961156741c961470716af5d37bdec0ce5412c3f5d7417db126c08d8ac6b7b7ea",
     "report/runs/live-primary-02/run-metadata.json": "175a229a66dc944e6e4c844e71728f974c8c708e6c82487ecb8a824a32f20b41",
     "report/runs/live-primary-02/validation-result.json": "03d9d85da004e98730e12b9b08da05214180c41789cd7777a5d00bb3565279e5",
-    "report/screenshots/.DS_Store": "d65165279105ca6773180500688df4bdc69a2c7b771752f0a46ef120b7fd8ec3",
     "report/screenshots/01-offline-gates.png": "357e911a8096d6aca7b1418089d22abd56c33ff3ee8f0d366581430bff8e3352",
     "report/screenshots/02-refusal-unchanged.png": "720e2ad2c03ec6d7ec0d565286c196f0f26fdd9a23bd51c154df426af0ecec24",
     "report/screenshots/03-live-comparison.png": "5992bd38e95ec1a48724912bce1e62202b653b8e712534097b6b20e91b2188ff",
@@ -90,7 +88,7 @@
     {
       "check_id": "artifact-map",
       "status": "passed",
-      "message": "29 artifacts mapped by path and digest"
+      "message": "27 artifacts mapped by path and digest"
     },
     {
       "check_id": "vault-read-only",
