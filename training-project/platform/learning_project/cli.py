@@ -14,7 +14,6 @@ copy of a Markdown report:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import subprocess
@@ -41,29 +40,20 @@ from .lab02 import (
 from .lab03 import (
     aggregate as aggregate_lab03,
     build_blinded_index,
-    build_curator_input,
     build_positions,
     close_unstarted_positions,
     freeze_protocol,
-    ingest_curator_candidate,
     load_family,
     load_frozen_instructions,
     record_assessment,
     record_completion_status,
-    record_curator_attempt_failure,
-    record_dispute,
-    record_evaluator_amendment,
-    record_correction,
-    record_human_case_review,
     record_interrupted_position,
     record_premature_exposure,
     record_recommendation,
     record_regression,
     record_selected_comparison,
-    record_transfer_case,
     record_variant_b,
     run_position,
-    curator_launch,
     lab03_status,
     select_family,
     start_calibration,
@@ -71,6 +61,17 @@ from .lab03 import (
     submit_calibration,
     validate_completion_detail,
     verify_lab03,
+)
+from .lab04 import DEFAULT_STAGE_B_FIXTURE, prepare_boundary_comparison, record_boundary_decision, verify_stage_b
+from .lab04_retrieval import execute_retrieval, verify_stage_c2
+from . import lab04_evaluation
+from .lab04_index import (
+    DEFAULT_STAGE_C1_FIXTURE,
+    check_index_bindings,
+    fetch_embedding_model,
+    prepare_retrieval_unit_embeddings,
+    prepare_vector_index,
+    verify_stage_c1,
 )
 from .openai_compatible import run_openrouter
 from .report_submission import prepare_report
@@ -249,17 +250,13 @@ def _build_parser() -> argparse.ArgumentParser:
     calibrate_submit.add_argument("--packet", required=True, choices=("calibration-a", "calibration-b"))
     calibrate_submit.add_argument("--by", required=True)
 
-    transfer = lab03_commands.add_parser("record-transfer", help="Record the transfer case and perturbation.")
-    transfer.add_argument("--report-dir", type=Path, required=True)
-    transfer.add_argument("--transfer", type=Path, required=True)
-    transfer.add_argument("--perturbation", type=Path, required=True)
 
     variant_b = lab03_commands.add_parser("record-variant-b", help="Record Variant B and its change declaration.")
     variant_b.add_argument("--report-dir", type=Path, required=True)
     variant_b.add_argument("--text", type=Path, required=True)
     variant_b.add_argument("--change", type=Path, required=True)
 
-    dev_run = lab03_commands.add_parser("dev-run", help="Run one development position (8 scheduled).")
+    dev_run = lab03_commands.add_parser("dev-run", help="Run one development position (4 scheduled).")
     dev_run.add_argument("--report-dir", type=Path, required=True)
     dev_run.add_argument("--position-id", required=True)
     dev_run.add_argument("--adapter", choices=("offline-fixture", "openrouter"), required=True)
@@ -301,63 +298,6 @@ def _build_parser() -> argparse.ArgumentParser:
     premature.add_argument("--family-id", required=True)
     premature.add_argument("--by", required=True)
 
-    curator_prepare = lab03_commands.add_parser(
-        "curator-prepare",
-        help="Write isolated curator input from prior family manifests.",
-    )
-    curator_prepare.add_argument("--report-dir", type=Path, required=True)
-    curator_prepare.add_argument("--freeze-id", required=True)
-
-    curator_launch_cmd = lab03_commands.add_parser(
-        "curator-launch",
-        help="Launch the isolated curator session through the OpenRouter route.",
-    )
-    curator_launch_cmd.add_argument("--report-dir", type=Path, required=True)
-    curator_launch_cmd.add_argument("--freeze-id", required=True)
-    curator_launch_cmd.add_argument("--attempt", type=int, choices=(1, 2), required=True)
-    curator_launch_cmd.add_argument(
-        "--destination", type=Path, required=True,
-        help="Outside the comparison directory, e.g. student/lab03/curator-candidate-1.json.",
-    )
-    curator_launch_cmd.add_argument("--model-id", default="openrouter/free",
-                                    help="Isolated-session route alias; defaults to openrouter/free.")
-    curator_launch_cmd.add_argument("--by", required=True)
-
-    curator_ingest = lab03_commands.add_parser(
-        "curator-ingest",
-        help="Validate one isolated curator candidate family.",
-    )
-    curator_ingest.add_argument("--report-dir", type=Path, required=True)
-    curator_ingest.add_argument("--freeze-id", required=True)
-    curator_ingest.add_argument("--candidate", type=Path, required=True)
-    curator_ingest.add_argument("--session", required=True)
-    curator_ingest.add_argument("--attempt", type=int, required=True, choices=(1, 2))
-
-    curator_attempt = lab03_commands.add_parser(
-        "curator-attempt-failed",
-        help="Record a consumed curator attempt that produced no ingestible candidate.",
-    )
-    curator_attempt.add_argument("--report-dir", type=Path, required=True)
-    curator_attempt.add_argument("--freeze-id", required=True)
-    curator_attempt.add_argument("--attempt", type=int, required=True, choices=(1, 2))
-    curator_attempt.add_argument(
-        "--outcome",
-        required=True,
-        choices=("launch-failed", "route-unavailable", "quota-unavailable", "empty-result", "invalid-candidate"),
-    )
-    curator_attempt.add_argument("--detail", required=True)
-    curator_attempt.add_argument("--by", required=True)
-
-    curator_review = lab03_commands.add_parser(
-        "curator-review",
-        help="Record the post-freeze human case review of a curator family.",
-    )
-    curator_review.add_argument("--report-dir", type=Path, required=True)
-    curator_review.add_argument("--freeze-id", required=True)
-    curator_review.add_argument("--decision", required=True, choices=("approved", "rejected"))
-    curator_review.add_argument("--attempt", type=int, required=True, choices=(1, 2))
-    curator_review.add_argument("--reasons", required=True)
-    curator_review.add_argument("--by", required=True)
 
     run_cmd = lab03_commands.add_parser("run", help="Run one held-out position through an adapter.")
     run_cmd.add_argument("--report-dir", type=Path, required=True)
@@ -412,35 +352,6 @@ def _build_parser() -> argparse.ArgumentParser:
     assess.add_argument("--shares-rationale-with")
     assess.add_argument("--by", required=True)
 
-    dispute = lab03_commands.add_parser("record-dispute", help="Record an unresolved human-reference dispute.")
-    dispute.add_argument("--report-dir", type=Path, required=True)
-    dispute.add_argument("--freeze-id", required=True)
-    dispute.add_argument("--blind-id", required=True)
-    dispute.add_argument("--reason", required=True)
-    dispute.add_argument("--by", required=True)
-
-    amendment = lab03_commands.add_parser(
-        "record-amendment",
-        help="Record a confirmed rubric or reference defect (append-only).",
-    )
-    amendment.add_argument("--report-dir", type=Path, required=True)
-    amendment.add_argument("--freeze-id", required=True)
-    amendment.add_argument("--amendment-id", required=True)
-    amendment.add_argument("--defect", required=True)
-    amendment.add_argument("--by", required=True)
-
-    correction = lab03_commands.add_parser(
-        "record-correction",
-        help="Record an append-only correction of one mistaken evaluator assessment.",
-    )
-    correction.add_argument("--report-dir", type=Path, required=True)
-    correction.add_argument("--freeze-id", required=True)
-    correction.add_argument("--blind-id", required=True)
-    correction.add_argument("--corrected-category", required=True,
-                            choices=("S", "I", "U", "Q", "R", "X"))
-    correction.add_argument("--resolution-basis", required=True,
-                            help="The supplied-source passage that resolves the mistake.")
-    correction.add_argument("--by", required=True)
 
     status_cmd = lab03_commands.add_parser(
         "status",
@@ -478,6 +389,105 @@ def _build_parser() -> argparse.ArgumentParser:
     verify_lab03_cmd = lab03_commands.add_parser("verify", help="Commit-first verification of Laboratory 03.")
     verify_lab03_cmd.add_argument("--report-dir", type=Path, required=True)
     verify_lab03_cmd.add_argument("--final-commit", required=True)
+
+    lab04 = commands.add_parser("lab04", help="Run the Laboratory 04 retrieval workflow.")
+    lab04_commands = lab04.add_subparsers(dest="lab04_command", required=True)
+
+    prepare_boundaries = lab04_commands.add_parser(
+        "prepare-boundaries",
+        help="Apply both supplied chunking configurations and preserve every provenance link.",
+    )
+    prepare_boundaries.add_argument("--report-dir", type=Path, required=True)
+
+    record_boundary = lab04_commands.add_parser(
+        "record-boundary-decision",
+        help="Record the engineering team's selected chunking configuration.",
+    )
+    record_boundary.add_argument("--report-dir", type=Path, required=True)
+    record_boundary.add_argument("--chunking-configuration-id", required=True)
+    record_boundary.add_argument("--rationale", required=True)
+    record_boundary.add_argument("--by", required=True)
+
+    verify_stage_b_command = lab04_commands.add_parser(
+        "verify-stage-b",
+        help="Verify the Laboratory 04 Stage B evidence without making the human decision.",
+    )
+    verify_stage_b_command.add_argument("--report-dir", type=Path, required=True)
+
+    fetch_model = lab04_commands.add_parser(
+        "fetch-embedding-model",
+        help="Acquire the pinned local embedding model once and record its provenance.",
+    )
+    fetch_model.add_argument("--model-dir", type=Path, required=True)
+    fetch_model.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+
+    prepare_embeddings = lab04_commands.add_parser(
+        "prepare-embeddings",
+        help="Produce one compatible retrieval-unit embedding for every included retrieval unit.",
+    )
+    prepare_embeddings.add_argument("--report-dir", type=Path, required=True)
+    prepare_embeddings.add_argument("--model-dir", type=Path)
+    prepare_embeddings.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+
+    prepare_index = lab04_commands.add_parser(
+        "prepare-index",
+        help="Bind the compatible embeddings and their associations into one vector index.",
+    )
+    prepare_index.add_argument("--report-dir", type=Path, required=True)
+    prepare_index.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+
+    check_bindings = lab04_commands.add_parser(
+        "check-index-bindings",
+        help="Compare the required bindings with the recorded index manifest before use.",
+    )
+    check_bindings.add_argument("--report-dir", type=Path, required=True)
+    check_bindings.add_argument("--required-retrieval-configuration-id", required=True)
+    check_bindings.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+
+    verify_stage_c1_command = lab04_commands.add_parser(
+        "verify-stage-c1",
+        help="Verify the Laboratory 04 Stage C1 evidence without executing retrieval.",
+    )
+    verify_stage_c1_command.add_argument("--report-dir", type=Path, required=True)
+    verify_stage_c1_command.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+
+    execute = lab04_commands.add_parser("execute-retrieval", help="Produce one ranked candidate output.")
+    execute.add_argument("--report-dir", type=Path, required=True)
+    execute.add_argument("--case-id", required=True, choices=["Evaluation Case A", "Evaluation Case B"])
+    execute.add_argument("--configuration-id", required=True, choices=[
+        "lexical retrieval", "embedding-based retrieval", "hybrid retrieval",
+        "lexical retrieval followed by embedding-based reranking"])
+    execute.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+    execute.add_argument("--model-dir", type=Path)
+    verify_c2 = lab04_commands.add_parser("verify-stage-c2", help="Independently recompute the eight retrieval outputs.")
+    verify_c2.add_argument("--report-dir", type=Path, required=True)
+    verify_c2.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+    verify_c2.add_argument("--model-dir", type=Path)
+
+    record_judgments = lab04_commands.add_parser("record-relevance-judgments", help="Record the designated human evaluator's relevance judgments.")
+    record_judgments.add_argument("--report-dir", type=Path, required=True)
+    record_judgments.add_argument("--judgments", type=Path, required=True)
+    record_judgments.add_argument("--evaluator", required=True)
+    compute_metrics = lab04_commands.add_parser("compute-retrieval-metrics", help="Compute precision@k and recall@k with explicit numerators and denominators.")
+    compute_metrics.add_argument("--report-dir", type=Path, required=True)
+    compute_metrics.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+    compute_metrics.add_argument("--model-dir", type=Path)
+    verify_c3 = lab04_commands.add_parser("verify-stage-c3", help="Independently recompute the Stage C3 metric arithmetic.")
+    verify_c3.add_argument("--report-dir", type=Path, required=True)
+    verify_c3.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+    verify_c3.add_argument("--model-dir", type=Path)
+    measure_op = lab04_commands.add_parser("measure-operational-evidence", help="Measure the declared operational-evidence items per configuration.")
+    measure_op.add_argument("--report-dir", type=Path, required=True)
+    measure_op.add_argument("--fixture", type=Path, default=DEFAULT_STAGE_C1_FIXTURE)
+    measure_op.add_argument("--model-dir", type=Path)
+    measure_op.add_argument("--runs", type=int, default=3)
+    decision = lab04_commands.add_parser("record-configuration-decision", help="Record one bounded configuration decision.")
+    decision.add_argument("--report-dir", type=Path, required=True)
+    decision.add_argument("--selected-configuration", required=True, choices=[
+        "lexical retrieval", "embedding-based retrieval", "hybrid retrieval",
+        "lexical retrieval followed by embedding-based reranking"])
+    decision.add_argument("--rationale", required=True)
+    decision.add_argument("--decided-by", required=True)
 
     return parser
 
@@ -721,14 +731,6 @@ def _run_lab03(args: argparse.Namespace) -> int:
         )
         print(f"Calibration complete: {result['agreement']}/{result['total']} labels agree with reviewed labels.")
         return 0
-    if command == "record-transfer":
-        transfer = yaml.safe_load(args.transfer.read_text(encoding="utf-8"))
-        perturbation = yaml.safe_load(args.perturbation.read_text(encoding="utf-8"))
-        path = record_transfer_case(
-            report_dir=report_dir, transfer_case=transfer, perturbation=perturbation
-        )
-        print(f"Wrote the transfer case to {path}.")
-        return 0
     if command == "record-variant-b":
         variant_b_text = args.text.read_text(encoding="utf-8")
         change = yaml.safe_load(args.change.read_text(encoding="utf-8"))
@@ -745,21 +747,7 @@ def _run_lab03(args: argparse.Namespace) -> int:
                 training_project / "cases" / "lab03" / "development" / "dev-common-inputs.json",
                 expected_cases=2,
             )
-            transfer = yaml.safe_load((dev_dir / "transfer-case.yaml").read_text(encoding="utf-8"))
-            perturbation = yaml.safe_load((dev_dir / "transfer-perturbation.yaml").read_text(encoding="utf-8"))
-            dev_cases = [
-                *dev_family["cases"],
-                {
-                    "case_id": transfer["case_id"],
-                    "task": transfer["task"],
-                    "supplied_source": transfer["supplied_source"],
-                },
-                {
-                    "case_id": perturbation["case_id"],
-                    "task": perturbation["task"],
-                    "supplied_source": perturbation["supplied_source"],
-                },
-            ]
+            dev_cases = dev_family["cases"]
             build_positions(
                 comparison_dir=dev_dir,
                 family={"family_id": "dev-common", "cases": dev_cases},
@@ -858,134 +846,7 @@ def _run_lab03(args: argparse.Namespace) -> int:
         record_premature_exposure(ledger=ledger, family_id=args.family_id, student=args.by)
         print(f"Recorded premature exposure of family {args.family_id}.")
         return 0
-    if command == "curator-prepare":
-        payload = build_curator_input(
-            reserves_dir=training_project / "cases" / "lab03" / "reserves",
-            contract_path=training_project / "cases" / "lab03" / "case-family-contract.yaml",
-            report_dir=report_dir,
-        )
-        path = comparison_dir(args.freeze_id) / "curator" / "input.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            raise WorkflowError(f"The immutable artifact already exists: {path.name}")
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"Wrote curator input to {path}.")
-        return 0
-    if command == "curator-launch":
-        from .lab03_adapters import openrouter_prompt_runner_factory
 
-        def curator_prompt_runner(prompt: str) -> str:
-            # The isolated curator session is a single-prompt OpenRouter call;
-            # the credential stays in the process environment and is never recorded.
-            return openrouter_prompt_runner_factory(args.model_id)(prompt).content
-
-        result = curator_launch(
-            comparison_dir=comparison_dir(args.freeze_id),
-            report_dir=report_dir,
-            destination=args.destination,
-            attempt=args.attempt,
-            runner=curator_prompt_runner,
-            by=args.by,
-        )
-        print(
-            f"Curator attempt {result['attempt']} session {result['session_id']} wrote the candidate "
-            f"to {result['candidate_path']} without opening it; session record at {result['session_record']}. "
-            f"Use --session {result['session_id']} with curator-ingest."
-        )
-        return 0
-    if command == "curator-ingest":
-        candidate = json.loads(args.candidate.read_text(encoding="utf-8"))
-        cmp_dir = comparison_dir(args.freeze_id)
-        input_path = cmp_dir / "curator" / "input.json"
-        if input_path.exists():
-            curator_input = json.loads(input_path.read_text(encoding="utf-8"))
-        else:
-            curator_input = build_curator_input(
-                reserves_dir=training_project / "cases" / "lab03" / "reserves",
-                contract_path=training_project / "cases" / "lab03" / "case-family-contract.yaml",
-                report_dir=report_dir,
-            )
-        family = ingest_curator_candidate(
-            comparison_dir=cmp_dir,
-            candidate_family=candidate,
-            curator_input=curator_input,
-            curator_session=args.session,
-            attempt=args.attempt,
-        )
-        print(f"Ingested curator candidate {family['family_id']} for attempt {args.attempt}.")
-        return 0
-    if command == "curator-attempt-failed":
-        path = record_curator_attempt_failure(
-            comparison_dir=comparison_dir(args.freeze_id),
-            attempt=args.attempt,
-            outcome=args.outcome,
-            detail=args.detail,
-            student=args.by,
-        )
-        print(f"Recorded failed curator attempt {args.attempt} at {path}.")
-        return 0
-    if command == "curator-review":
-        cmp_dir = comparison_dir(args.freeze_id)
-        candidate = json.loads(
-            (cmp_dir / "curator" / "attempts" / f"attempt-{args.attempt}" / "candidate.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        path = record_human_case_review(
-            comparison_dir=cmp_dir,
-            family=candidate,
-            decision=args.decision,
-            reasons=args.reasons,
-            student=args.by,
-            attempt=args.attempt,
-        )
-        if args.decision == "approved":
-            public_family = {key: value for key, value in candidate.items() if key != "expected_behaviors"}
-            revealed_path = cmp_dir / "revealed-family.json"
-            if revealed_path.exists():
-                raise WorkflowError("A family is already revealed for this comparison.")
-            revealed_path.write_text(
-                json.dumps(
-                    {
-                        "family": public_family,
-                        "family_sha256": hashlib.sha256(
-                            json.dumps(candidate, sort_keys=True).encode("utf-8")
-                        ).hexdigest(),
-                        "eligible_at_selection": [candidate["family_id"]],
-                        "selected_at": _now(),
-                        "selected_by": args.by,
-                        "curator_recovery": True,
-                    },
-                    indent=2,
-                    ensure_ascii=False,
-                ) + "\n",
-                encoding="utf-8",
-            )
-            internal = cmp_dir / "_internal" / "held-out-references.json"
-            internal.parent.mkdir(parents=True, exist_ok=True)
-            internal.write_text(
-                json.dumps(
-                    {
-                        "family_id": candidate["family_id"],
-                        "expected_behaviors": candidate["expected_behaviors"],
-                    },
-                    indent=2,
-                    ensure_ascii=False,
-                ) + "\n",
-                encoding="utf-8",
-            )
-            build_positions(comparison_dir=cmp_dir, family=candidate, kind="held-out")
-            ledger = ExposureLedger(report_dir / "exposure-ledger.json")
-            ledger.append({
-                "event": "used-in-comparison",
-                "family_id": candidate["family_id"],
-                "freeze_id": args.freeze_id,
-                "actor": args.by,
-                "recorded_at": _now(),
-                "curator_recovery": True,
-            })
-        print(f"Recorded curator case review {args.decision} at {path}.")
-        return 0
     if command == "run":
         cmp_dir = comparison_dir(args.freeze_id)
         schedule = json.loads((cmp_dir / "schedule.json").read_text(encoding="utf-8"))
@@ -1067,37 +928,7 @@ def _run_lab03(args: argparse.Namespace) -> int:
         )
         print(f"Recorded the assessment to {path}.")
         return 0
-    if command == "record-dispute":
-        path = record_dispute(
-            comparison_dir=comparison_dir(args.freeze_id),
-            blind_id=args.blind_id,
-            reason=args.reason,
-            student=args.by,
-        )
-        print(f"Recorded the dispute to {path}.")
-        return 0
-    if command == "record-amendment":
-        path = record_evaluator_amendment(
-            comparison_dir=comparison_dir(args.freeze_id),
-            amendment_id=args.amendment_id,
-            defect=args.defect,
-            confirmed_by=args.by,
-        )
-        print(f"Recorded the evaluator amendment to {path}.")
-        return 0
-    if command == "record-correction":
-        path = record_correction(
-            comparison_dir=comparison_dir(args.freeze_id),
-            blind_id=args.blind_id,
-            corrected_category=args.corrected_category,
-            resolution_basis=args.resolution_basis,
-            student=args.by,
-        )
-        print(
-            f"Recorded the append-only correction for {args.blind_id} to {path}; "
-            "the original assessment is preserved and aggregation settles on the corrected category."
-        )
-        return 0
+
     if command == "status":
         summary = lab03_status(report_dir=report_dir)
         print(json.dumps(summary, indent=2, ensure_ascii=False))
@@ -1145,6 +976,107 @@ def _run_lab03(args: argparse.Namespace) -> int:
     raise WorkflowError(f"Unknown Laboratory 03 command: {command}")
 
 
+def _run_lab04(args: argparse.Namespace) -> int:
+    command = args.lab04_command
+    if command == "prepare-boundaries":
+        path = prepare_boundary_comparison(fixture_path=DEFAULT_STAGE_B_FIXTURE, report_dir=args.report_dir)
+        print(f"Prepared the boundary comparison at {path}.")
+        return 0
+    if command == "record-boundary-decision":
+        path = record_boundary_decision(
+            report_dir=args.report_dir,
+            selected_chunking_configuration_id=args.chunking_configuration_id,
+            rationale=args.rationale,
+            student=args.by,
+        )
+        print(f"Recorded the boundary decision at {path}.")
+        return 0
+    if command == "verify-stage-b":
+        verification = verify_stage_b(report_dir=args.report_dir)
+        print(
+            "Laboratory 04 Stage B verification "
+            f"{verification['outcome']} for {verification['selected chunking configuration']}."
+        )
+        return 0
+    if command == "fetch-embedding-model":
+        provenance = fetch_embedding_model(model_dir=args.model_dir, fixture_path=args.fixture)
+        print(
+            f"Acquired the declared local embedding model {provenance['embedding model']} "
+            f"at revision {provenance['model revision']} in {args.model_dir}."
+        )
+        return 0
+    if command == "prepare-embeddings":
+        path = prepare_retrieval_unit_embeddings(
+            report_dir=args.report_dir,
+            fixture_path=args.fixture,
+            model_dir=args.model_dir,
+        )
+        print(f"Prepared the retrieval-unit embeddings at {path}.")
+        return 0
+    if command == "prepare-index":
+        path = prepare_vector_index(report_dir=args.report_dir, fixture_path=args.fixture)
+        print(f"Prepared the vector index at {path}.")
+        return 0
+    if command == "check-index-bindings":
+        record = check_index_bindings(
+            report_dir=args.report_dir,
+            fixture_path=args.fixture,
+            required_retrieval_configuration_id=args.required_retrieval_configuration_id,
+        )
+        if record["outcome"] == "admissible":
+            print(
+                f"The vector index identified by index version {record['index version']} is admissible for "
+                f"{record['required retrieval configuration id']}."
+            )
+        else:
+            print(
+                f"The vector index identified by index version {record['index version']} is stale for "
+                f"{record['required retrieval configuration id']}; failed binding: "
+                f"{record['failed binding']}. Rebuild condition: {record['rebuild condition']}."
+            )
+        return 0
+    if command == "verify-stage-c1":
+        verification = verify_stage_c1(report_dir=args.report_dir, fixture_path=args.fixture)
+        print(f"Laboratory 04 Stage C1 verification {verification['outcome']} for {verification['index version']}.")
+        return 0
+    if command == "execute-retrieval":
+        path = execute_retrieval(report_dir=args.report_dir, c1_fixture_path=args.fixture,
+                                 case_id=args.case_id, configuration_id=args.configuration_id, model_dir=args.model_dir)
+        print(f"Ranked candidate output at {path}.")
+        return 0
+    if command == "verify-stage-c2":
+        verification = verify_stage_c2(report_dir=args.report_dir, c1_fixture_path=args.fixture, model_dir=args.model_dir)
+        print(f"Laboratory 04 Stage C2 verification {verification['outcome']} for {verification['verified outputs']} outputs.")
+        return 0
+    if command == "record-relevance-judgments":
+        path = lab04_evaluation.record_relevance_judgments(report_dir=args.report_dir,
+            judgments_path=args.judgments, evaluator=args.evaluator)
+        print(f"Relevance judgments recorded at {path}.")
+        return 0
+    if command == "compute-retrieval-metrics":
+        path = lab04_evaluation.compute_retrieval_metrics(report_dir=args.report_dir,
+            c1_fixture_path=args.fixture, model_dir=args.model_dir)
+        print(f"Retrieval metrics recorded at {path}.")
+        return 0
+    if command == "verify-stage-c3":
+        verification = lab04_evaluation.verify_stage_c3(report_dir=args.report_dir,
+            c1_fixture_path=args.fixture, model_dir=args.model_dir)
+        print(f"Laboratory 04 Stage C3 verification {verification['outcome']} for {verification['verified metric entries']} metric entries.")
+        return 0
+    if command == "measure-operational-evidence":
+        path = lab04_evaluation.measure_operational_evidence(report_dir=args.report_dir,
+            c1_fixture_path=args.fixture, model_dir=args.model_dir, runs=args.runs)
+        print(f"Operational evidence recorded at {path}.")
+        return 0
+    if command == "record-configuration-decision":
+        path = lab04_evaluation.record_configuration_decision(report_dir=args.report_dir,
+            selected_configuration_id=args.selected_configuration, rationale=args.rationale,
+            decided_by=args.decided_by)
+        print(f"Configuration decision recorded at {path}.")
+        return 0
+    raise WorkflowError(f"Unknown Laboratory 04 command: {command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     handlers = {
@@ -1155,6 +1087,7 @@ def main(argv: list[str] | None = None) -> int:
         "prepare-report": _run_prepare_report,
         "lab02": _run_lab02,
         "lab03": _run_lab03,
+        "lab04": _run_lab04,
     }
     try:
         return handlers[args.command](args)
